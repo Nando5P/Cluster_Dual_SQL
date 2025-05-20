@@ -357,7 +357,30 @@ WHERE
     YEAR (MOVIE_RELEASE_DATE) - YEAR (DIRECTOR_DEAD_DATE) > 0;
 
 -- 34- Utilizando la información de la sentencia anterior, modifica la fecha de defunción a un año más tarde del estreno de la película (mediante sentencia SQL)
-
+UPDATE DIRECTORS
+SET
+    DIRECTOR_DEAD_DATE = (
+        SELECT
+            DATE_ADD (MOVIE_RELEASE_DATE, INTERVAL 1 YEAR)
+        FROM
+            MOVIES
+        WHERE
+            MOVIES.DIRECTOR_ID = DIRECTORS.DIRECTOR_ID
+        ORDER BY
+            MOVIE_RELEASE_DATE DESC
+        LIMIT
+            1
+    )
+WHERE
+    DIRECTOR_ID IN (
+        SELECT
+            D.DIRECTOR_ID
+        FROM
+            MOVIES M
+            JOIN DIRECTORS D ON M.DIRECTOR_ID = D.DIRECTOR_ID
+        WHERE
+            M.MOVIE_RELEASE_DATE > D.DIRECTOR_DEAD_DATE
+    );
 
 --================================
 --DIFICULTAD: Berserk mode (enunciados simples, mucha diversión…)
