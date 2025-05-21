@@ -143,7 +143,7 @@ SELECT DISTINCT
     U.USER_JOIN_DATE AS Fecha_Join,
     U.USER_SUBSCRIPTION_ID AS Fecha_Suscripcion
 FROM
-    USERS U 
+    USERS U
     JOIN USER_MOVIE_ACCESS MA ON U.USER_ID = MA.USER_ID
 WHERE
     MA.ACCESS_DATE BETWEEN '2010-01-01' AND '2015-12-31';
@@ -249,7 +249,7 @@ FROM
     MOVIES M
     JOIN DIRECTORS D ON M.DIRECTOR_ID = D.DIRECTOR_ID
 WHERE
-    M.MOVIE_NAME LIKE '%The%'
+    UPPER(M.MOVIE_NAME) LIKE '%THE%'
     AND YEAR (M.MOVIE_RELEASE_DATE) BETWEEN 1960 AND 1989
 GROUP BY
     D.DIRECTOR_NAME;
@@ -334,7 +334,7 @@ WHERE
     S.STUDIO_ACTIVE = 0;
 
 -- 32- Indica el nombre, ciudad, y teléfono de todos los miembros de la plataforma que hayan accedido películas que hayan sido nominadas a más de 150 premios y ganaran menos de 50
-SELECT
+SELECT DISTINCT
     U.USER_NAME AS Usuario,
     U.USER_TOWN AS Ciudad,
     U.USER_PHONE AS Telefono
@@ -388,79 +388,107 @@ WHERE
 -- 35- Indica cuál es el género favorito de cada uno de los directores cuando dirigen una película
 SELECT
     D.DIRECTOR_NAME AS Director,
+    GROUP_CONCAT(
+        G.GENRE_NAME
+    ) AS Generos
+FROM
+    DIRECTORS D
+JOIN
     (
         SELECT
-            N.NATIONALITY_NAME
+            M.DIRECTOR_ID,
+            G.GENRE_NAME,
+            COUNT(G.GENRE_ID) AS Repeticiones
         FROM
             MOVIES M
-            JOIN NATIONALITIES N ON M.NATIONALITY_ID = N.NATIONALITY_ID
-        WHERE
-            M.DIRECTOR_ID = D.DIRECTOR_ID
+        JOIN
+            GENRES G ON M.GENRE_ID = G.GENRE_ID
         GROUP BY
-            N.NATIONALITY_NAME
-        ORDER BY
-            COUNT(N.NATIONALITY_ID) DESC
-        LIMIT
-            1
-    ) AS Nacionalidad
-FROM
-    DIRECTORS D;
-
--- 36- Indica cuál es la nacionalidad favorita de cada uno de los estudios en la producción de las películas
-SELECT
-    S.STUDIO_NAME AS Estudio,
-    NP.NATIONALITY_NAME AS Nacionalidad_Mas_Frecuente
-FROM
-    (
+            M.DIRECTOR_ID, G.GENRE_NAME
+    ) G ON D.DIRECTOR_ID = G.DIRECTOR_ID
+WHERE
+    G.Repeticiones = (
         SELECT
-            M.STUDIO_ID,
-            N.NATIONALITY_NAME,
-            COUNT(*) AS Total
-        FROM
-            MOVIES M
-            JOIN NATIONALITIES N ON M.NATIONALITY_ID = N.NATIONALITY_ID
-        GROUP BY
-            M.STUDIO_ID,
-            N.NATIONALITY_NAME
-    ) AS NP
-    JOIN (
-        SELECT
-            STUDIO_ID,
-            MAX(Contador) AS MaxTotal
+            MAX(Repeticiones)
         FROM
             (
                 SELECT
-                    M.STUDIO_ID,
-                    COUNT(*) AS Contador
+                    M.DIRECTOR_ID,
+                    G.GENRE_NAME,
+                    COUNT(G.GENRE_ID) AS Repeticiones
                 FROM
                     MOVIES M
+                JOIN
+                    GENRES G ON M.GENRE_ID = G.GENRE_ID
                 GROUP BY
-                    M.STUDIO_ID,
-                    M.NATIONALITY_ID
-            )
-        GROUP BY
-            STUDIO_ID
-    ) AS MT ON NP.STUDIO_ID = MT.STUDIO_ID
-    AND NP.Total = MT.MaxTotal
-    JOIN STUDIOS S ON S.STUDIO_ID = NP.STUDIO_ID;
+                    M.DIRECTOR_ID, G.GENRE_NAME
+            ) F
+        WHERE
+            F.DIRECTOR_ID = D.DIRECTOR_ID
+    )
+GROUP BY
+    D.DIRECTOR_NAME
+ORDER BY
+    D.DIRECTOR_NAME;
+
+-- 36- Indica cuál es la nacionalidad favorita de cada uno de los estudios en la producción de las películas
+WITH TOT_NAT AS (
+SELECT
+	S.STUDIO_ID,
+	S.STUDIO_NAME,
+	N.NATIONALITY_ID,
+	N.NATIONALITY_NAME,
+	COUNT(N.NATIONALITY_ID) AS NUM_MOVIES
+FROM
+	MOVIES M
+JOIN NATIONALITIES N ON
+	M.NATIONALITY_ID = N.NATIONALITY_ID
+JOIN PUBLIC.STUDIOS S ON
+	S.STUDIO_ID = M.STUDIO_ID
+GROUP BY
+	S.STUDIO_ID,
+	N.NATIONALITY_ID
+ORDER BY
+    S.STUDIO_ID ASC,
+    NUM_MOVIES DESC),
+MAX_NAT AS (
+SELECT
+		STUDIO_ID,
+		MAX(NUM_MOVIES) AS MAX_MOVIES
+	FROM
+		TOT_NAT
+	GROUP BY
+		STUDIO_ID
+		)
+  SELECT
+      STUDIO_NAME,
+      GROUP_CONCAT(NATIONALITY_NAME) AS NATIONALITY_NAME
+  FROM
+      TOT_NAT AS TN
+  INNER JOIN MAX_NAT MN ON
+      TN.STUDIO_ID = MN.STUDIO_ID
+      AND TN.NUM_MOVIES = MN.MAX_MOVIES
+  GROUP BY
+      STUDIO_NAME;
+ 
 
 -- 37- Indica cuál fue la primera película a la que accedieron los miembros de la plataforma cuyos teléfonos tengan como último dígito el ID de alguna nacionalidad
-SELECT
-    U.USER_NAME AS Usuario,
-    M.MOVIE_NAME,
-    UM.ACCESS_DATE
-FROM
-    USERS U
-    JOIN USER_MOVIE_ACCESS UM ON U.USER_ID = UM.USER_ID
-    JOIN MOVIES M ON UM.MOVIE_ID = M.MOVIE_ID
-WHERE
-    CAST(
-        SUBSTR (U.USER_PHONE, LENGTH (U.USER_PHONE), 1) AS INTEGER
-    ) IN (
-        SELECT
-            NATIONALITY_ID
-        FROM
-            NATIONALITIES
-    )
-ORDER BY
-    UM.ACCESS_DATE ASC;
+WITH user_nation AS (
+	SELECT u.USER_ID AS USER,
+	u.USER_NAME AS USER_NAME
+	FROM PUBLIC.USERS u
+	WHERE  CAST(RIGHT(u.USER_PHONE, 1) AS INTEGER) IN (SELECT n.NATIONALITY_ID FROM PUBLIC.NATIONALITIES n )
+), user_movie AS (
+	SELECT
+	un.USER_NAME AS USER_NAME,
+	uma.USER_ID AS USER,
+	uma.MOVIE_ID AS MOVIE
+	FROM user_nation un
+	JOIN PUBLIC.USER_MOVIE_ACCESS uma ON uma.USER_ID = un.USER
+	WHERE uma.ACCESS_DATE = (SELECT MIN(ACCESS_DATE) FROM PUBLIC.USER_MOVIE_ACCESS a WHERE uma.USER_ID = USER_ID )
+)
+SELECT um.USER_NAME AS "Usuario",
+m.MOVIE_NAME AS "Pelicula"
+FROM user_movie um
+JOIN PUBLIC.MOVIES m ON m.MOVIE_ID = um.MOVIE
+ORDER BY um.USER_NAME;
