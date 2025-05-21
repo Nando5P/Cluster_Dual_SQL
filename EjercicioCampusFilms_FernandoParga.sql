@@ -387,12 +387,24 @@ WHERE
 --================================
 -- 35- Indica cuál es el género favorito de cada uno de los directores cuando dirigen una película
 SELECT
-    DIRECTOR_NAME AS Director,
-    GENRE_NAME AS Genero
+    D.DIRECTOR_NAME AS Director,
+    (
+        SELECT
+            N.NATIONALITY_NAME
+        FROM
+            MOVIES M
+            JOIN NATIONALITIES N ON M.NATIONALITY_ID = N.NATIONALITY_ID
+        WHERE
+            M.DIRECTOR_ID = D.DIRECTOR_ID
+        GROUP BY
+            N.NATIONALITY_NAME
+        ORDER BY
+            COUNT(N.NATIONALITY_ID) DESC
+        LIMIT
+            1
+    ) AS Nacionalidad
 FROM
-    MOVIES
-    JOIN DIRECTORS ON MOVIES.DIRECTOR_ID = DIRECTORS.DIRECTOR_ID
-    JOIN GENRES ON MOVIES.GENRE_ID = GENRES.GENRE_ID;
+    DIRECTORS D;
 
 -- 36- Indica cuál es la nacionalidad favorita de cada uno de los estudios en la producción de las películas
 SELECT
